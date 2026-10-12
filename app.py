@@ -1,16 +1,23 @@
 import numpy as np
 import streamlit as st
 
+from PIL import Image
+from streamlit_drawable_canvas import st_canvas
+
+
+# ============================================================
+# FUNCIONES DE ACTIVACIÓN
+# ============================================================
+
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
+
 def softmax(x):
+    # Restamos el máximo para evitar problemas numéricos
     exp_values = np.exp(x - np.max(x))
 
     return exp_values / np.sum(exp_values)
-
-from PIL import Image
-from streamlit_drawable_canvas import st_canvas
 
 
 # ============================================================
@@ -26,8 +33,8 @@ st.title("🧠 Laboratorio de Red Neuronal")
 
 st.write(
     "Dibuja un número del 0 al 9. "
-    "Por ahora solamente estudiaremos cómo se convierte "
-    "el dibujo en información que una red neuronal pueda procesar."
+    "La red procesará los píxeles e intentará clasificarlo. "
+    "Después podrás indicarle cuál era el número correcto para enseñarle."
 )
 
 
@@ -48,13 +55,17 @@ canvas_result = st_canvas(
     key="digit_canvas"
 )
 
+
 # ============================================================
-# PROCESAMIENTO
+# PROCESAMIENTO DE IMAGEN
 # ============================================================
 
 if canvas_result.image_data is not None:
 
-    # Imagen producida por el canvas
+    # --------------------------------------------------------
+    # Imagen original del canvas
+    # --------------------------------------------------------
+
     image = Image.fromarray(
         canvas_result.image_data.astype("uint8")
     )
@@ -74,80 +85,138 @@ if canvas_result.image_data is not None:
         dtype=np.float32
     )
 
-    # Normalizar:
-    # 0   → negro
-    # 255 → blanco
+    # --------------------------------------------------------
+    # NORMALIZACIÓN
+    # --------------------------------------------------------
     #
-    # pasa a:
+    # Original:
+    # 0   = negro
+    # 255 = blanco
     #
-    # 0.0 → negro
-    # 1.0 → blanco
+    # Normalizado:
+    # 0.0 = negro
+    # 1.0 = blanco
+    # --------------------------------------------------------
 
     pixels_normalized = pixels / 255.0
 
     # Convertir matriz 28x28
-    # a vector de 784 valores
-
+    # en vector de 784 valores
     input_vector = pixels_normalized.flatten()
+
 
     # ========================================================
     # PRIMERA NEURONA ARTIFICIAL
     # ========================================================
+    #
+    # Esta neurona es solamente educativa.
+    # NO aprende.
+    #
+    # Sirve para estudiar:
+    #
+    # entradas
+    #    ↓
+    # pesos
+    #    ↓
+    # suma ponderada
+    #    ↓
+    # bias
+    #    ↓
+    # sigmoid
+    #
+    # ========================================================
 
-    # Generador aleatorio con semilla fija.
-    # Así los pesos siempre serán iguales al reiniciar.
     rng = np.random.default_rng(42)
 
-    # La neurona necesita un peso por cada entrada.
     weights = rng.normal(
         loc=0.0,
         scale=0.1,
         size=784
     )
 
-    # Bias inicial
     bias = 0.0
-
-    # Suma ponderada:
-    #
-    # x1*w1 + x2*w2 + ... + x784*w784 + bias
 
     weighted_sum = np.dot(
         input_vector,
         weights
     ) + bias
 
-    # Función de activación
-    activation = sigmoid(weighted_sum)
-    # ========================================================
-    # CAPA DE SALIDA: 10 NEURONAS
-    # ========================================================
-
-    rng_output = np.random.default_rng(123)
-
-    # 784 entradas × 10 neuronas
-    output_weights = rng_output.normal(
-        loc=0.0,
-        scale=0.1,
-        size=(784, 10)
+    activation = sigmoid(
+        weighted_sum
     )
 
-    # Un bias por cada neurona
-    output_biases = np.zeros(10)
 
-    # Suma ponderada de las 10 neuronas
+    # ========================================================
+    # RED ENTRENABLE
+    # ========================================================
+    #
+    # Arquitectura actual:
+    #
+    # 784 entradas
+    #      ↓
+    # 10 neuronas de salida
+    #      ↓
+    # Softmax
+    #
+    # ========================================================
+
+    if "output_weights" not in st.session_state:
+
+        rng_output = np.random.default_rng(123)
+
+        # 784 entradas × 10 neuronas
+        st.session_state.output_weights = rng_output.normal(
+            loc=0.0,
+            scale=0.1,
+            size=(784, 10)
+        )
+
+        # Un bias por neurona
+        st.session_state.output_biases = np.zeros(10)
+
+        # Historial de entrenamiento
+        st.session_state.training_count = 0
+        st.session_state.correct_history = []
+        st.session_state.loss_history = []
+
+
+    # Obtener pesos actuales
+    output_weights = st.session_state.output_weights
+    output_biases = st.session_state.output_biases
+
+
+    # ========================================================
+    # FORWARD PASS
+    # ========================================================
+    #
+    # Entrada
+    #    ↓
+    # suma ponderada
+    #    ↓
+    # logits
+    #    ↓
+    # softmax
+    #    ↓
+    # probabilidades
+    #
+    # ========================================================
+
     logits = np.dot(
         input_vector,
         output_weights
     ) + output_biases
 
-    # Convertimos los resultados a probabilidades
-    probabilities = softmax(logits)
+    probabilities = softmax(
+        logits
+    )
 
-    # Número con mayor probabilidad
-    prediction = np.argmax(probabilities)
+    prediction = int(
+        np.argmax(probabilities)
+    )
+
+
     # ========================================================
-    # VISUALIZACIÓN
+    # VISUALIZACIÓN DE LA ENTRADA
     # ========================================================
 
     st.subheader("2. Lo que verá la red neuronal")
@@ -218,6 +287,11 @@ if canvas_result.image_data is not None:
         pixels_normalized
     )
 
+
+    # ========================================================
+    # PRIMERA NEURONA EDUCATIVA
+    # ========================================================
+
     st.subheader("4. Nuestra primera neurona")
 
     col1, col2, col3 = st.columns(3)
@@ -233,9 +307,10 @@ if canvas_result.image_data is not None:
     )
 
     col3.metric(
-        "Activación",
+        "Activación Sigmoid",
         f"{activation:.4f}"
     )
+
 
     st.write("### Algunos pesos de la neurona")
 
@@ -253,11 +328,16 @@ if canvas_result.image_data is not None:
         weight_data
     )
 
+
+    # ========================================================
+    # CLASIFICACIÓN
+    # ========================================================
+
     st.subheader("5. Primera capa de clasificación")
 
     st.write(
-        "Cada barra representa la activación de una "
-        "de las 10 neuronas de salida."
+        "Cada barra representa la probabilidad asignada "
+        "a cada número por las 10 neuronas de salida."
     )
 
     probability_data = {
@@ -271,7 +351,176 @@ if canvas_result.image_data is not None:
         y="Probabilidad"
     )
 
-    st.metric(
+
+    col1, col2 = st.columns(2)
+
+    col1.metric(
         "Predicción actual",
-        int(prediction)
+        prediction
+    )
+
+    col2.metric(
+        "Confianza",
+        f"{probabilities[prediction] * 100:.2f} %"
+    )
+
+
+    # ========================================================
+    # ENSEÑAR A LA RED
+    # ========================================================
+
+    st.subheader("6. Enseñar a la red")
+
+    correct_number = st.selectbox(
+        "¿Qué número dibujaste?",
+        options=list(range(10))
+    )
+
+    learning_rate = st.slider(
+        "Learning rate",
+        min_value=0.001,
+        max_value=0.5,
+        value=0.05,
+        step=0.001
+    )
+
+
+    if st.button("🧠 Enseñar a la red"):
+
+        # ----------------------------------------------------
+        # TARGET / ONE-HOT ENCODING
+        # ----------------------------------------------------
+
+        target = np.zeros(10)
+
+        target[correct_number] = 1
+
+
+        # ----------------------------------------------------
+        # LOSS
+        # ----------------------------------------------------
+        #
+        # Cross Entropy Loss
+        #
+        # Cuanto menor sea, mejor.
+        #
+        # ----------------------------------------------------
+
+        loss = -np.log(
+            probabilities[correct_number] + 1e-12
+        )
+
+
+        # ----------------------------------------------------
+        # GRADIENTE DE LOS LOGITS
+        # ----------------------------------------------------
+
+        gradient_logits = (
+            probabilities - target
+        )
+
+
+        # ----------------------------------------------------
+        # GRADIENTE DE LOS PESOS
+        # ----------------------------------------------------
+
+        gradient_weights = np.outer(
+            input_vector,
+            gradient_logits
+        )
+
+
+        # ----------------------------------------------------
+        # GRADIENTE DE LOS BIAS
+        # ----------------------------------------------------
+
+        gradient_biases = gradient_logits
+
+
+        # ----------------------------------------------------
+        # GRADIENT DESCENT
+        # ----------------------------------------------------
+
+        st.session_state.output_weights -= (
+            learning_rate
+            * gradient_weights
+        )
+
+        st.session_state.output_biases -= (
+            learning_rate
+            * gradient_biases
+        )
+
+
+        # ----------------------------------------------------
+        # HISTORIAL
+        # ----------------------------------------------------
+
+        st.session_state.training_count += 1
+
+        was_correct = int(
+            prediction == correct_number
+        )
+
+        st.session_state.correct_history.append(
+            was_correct
+        )
+
+        st.session_state.loss_history.append(
+            float(loss)
+        )
+
+
+        st.success(
+            f"Ejemplo aprendido. "
+            f"Predicción: {prediction} | "
+            f"Correcto: {correct_number} | "
+            f"Loss: {loss:.4f}"
+        )
+
+
+    # ========================================================
+    # ESTADO DEL ENTRENAMIENTO
+    # ========================================================
+
+    st.subheader("7. Estado del aprendizaje")
+
+    total_training = (
+        st.session_state.training_count
+    )
+
+    if total_training > 0:
+
+        accuracy = (
+            np.mean(
+                st.session_state.correct_history
+            )
+            * 100
+        )
+
+        last_loss = (
+            st.session_state.loss_history[-1]
+        )
+
+    else:
+
+        accuracy = 0.0
+        last_loss = 0.0
+
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Ejemplos enseñados",
+        total_training
+    )
+
+    col2.metric(
+        "Accuracy acumulado",
+        f"{accuracy:.2f} %"
+    )
+
+    col3.metric(
+        "Último Loss",
+        f"{last_loss:.4f}"
     )
