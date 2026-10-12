@@ -1,0 +1,25 @@
+# Entorno virtual
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# PyCharm
+.idea/
+
+# Streamlit
+.streamlit/
+
+# Variables de entorno / secretos
+.env
+
+# Archivos temporales
+*.log
+.DS_Store
+
+# Modelos entrenados
+models/
+
+# Datos generados
+data/
